@@ -1,7 +1,7 @@
 {
-  "name": "akira-girl-md",
+  "name": "viper-md",
   "version": "3.0.0",
-  "description": "WhatsApp Bot with Multi-Device Support and Auto-Cleanup",
+  "description": "𝐕𝐈𝐏𝐄𝐑 𝐌𝐃 - WhatsApp Bot with Multi-Device Support and Auto-Cleanup",
   "main": "index.js",
   "scripts": {
     "start": "node --expose-gc index.js",

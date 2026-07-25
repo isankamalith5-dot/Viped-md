@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Akira MD | Pair</title>
+  <title>𝐕𝐈𝐏𝐄𝐑 𝐌𝐃 | Pair</title>
   <!-- Google Fonts for Japanese & Modern look -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -294,14 +294,14 @@
   <!-- Loading Screen -->
   <div id="loading">
     <div class="loader-ring"></div>
-    <div class="loader-text">Loading Akira MD...</div>
+    <div class="loader-text">Loading 𝐕𝐈𝐏𝐄𝐑 𝐌𝐃...</div>
   </div>
 
   <div class="container">
     <div class="card">
       <div class="logo-wrap"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
-      <div class="bot-name">AKIRA MD</div>
-      <div class="bot-subtitle">アキラ — BOT PAIRING</div>
+      <div class="bot-name">𝐕𝐈𝐏𝐄𝐑 𝐌𝐃</div>
+      <div class="bot-subtitle">𝐕𝐈𝐏𝐄𝐑 — BOT PAIRING</div>
       <div class="divider"><span>ENTER NUMBER / 電話番号</span></div>
 
       <div class="input-row">
@@ -314,7 +314,7 @@
       </div>
 
       <div id="result"></div>
-      <div class="footer">© AKIRA MD — ALL RIGHTS RESERVED</div>
+      <div class="footer">© 𝐕𝐈𝐏𝐄𝐑 𝐌𝐃 — ALL RIGHTS RESERVED</div>
     </div>
   </div>
 
@@ -351,6 +351,30 @@
 
     function showMsg(html) { resultEl.innerHTML = html; }
 
+    let expiryInterval = null;
+    function startExpiryCountdown(durationMs) {
+      if (expiryInterval) clearInterval(expiryInterval);
+      let remaining = Math.floor(durationMs / 1000);
+      const tick = () => {
+        const el = document.getElementById('expiryCountdown');
+        if (!el) { clearInterval(expiryInterval); return; }
+        const mins = String(Math.floor(remaining / 60)).padStart(2, '0');
+        const secs = String(remaining % 60).padStart(2, '0');
+        el.textContent = `${mins}:${secs}`;
+        if (remaining <= 0) {
+          clearInterval(expiryInterval);
+          const box = document.querySelector('.code-box');
+          if (box) box.innerHTML = '<div class="code-label">⌛ Code Expired</div><div class="copy-hint">Please request a new pairing code</div>';
+          const em = document.getElementById('expiryMsg');
+          if (em) em.innerHTML = '<strong>This pairing code has expired.</strong> Please generate a new one.';
+          return;
+        }
+        remaining--;
+      };
+      tick();
+      expiryInterval = setInterval(tick, 1000);
+    }
+
     async function copyCode(code) {
       try {
         await navigator.clipboard.writeText(code);
@@ -381,6 +405,7 @@
         waitingEl.style.display = 'none';
         submitBtn.disabled = false;
         const code = data.code || 'UNAVAILABLE';
+        const expiresInMs = data.expiresInMs || 180000; // 3 minutes fallback
         showMsg(`
           <div class="msg success"><i class="fas fa-check-circle"></i> Pairing code generated successfully!</div>
           <div class="code-box" onclick="copyCode('${code}')">
@@ -388,13 +413,15 @@
             <div class="code-value">${code}</div>
             <div class="copy-hint">Tap to copy</div>
           </div>
-          <div class="msg info">
+          <div class="msg info" id="expiryMsg">
             <strong>How to use:</strong><br>
             1. Open WhatsApp → Settings → Linked Devices<br>
             2. Tap "Link a Device" → "Link with phone number"<br>
-            3. Enter the code above
+            3. Enter the code above<br><br>
+            ⏳ Code expires in <span id="expiryCountdown">03:00</span>
           </div>
         `);
+        startExpiryCountdown(expiresInMs);
       } catch (_) {
         waitingEl.style.display = 'none';
         submitBtn.disabled = false;

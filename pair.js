@@ -1,5 +1,5 @@
 /*                                                                                                                                    
-  AKIRA GIRL MD MINI BOT - MULTI SESSION SUPPORT
+  𝐕𝐈𝐏𝐄𝐑 𝐌𝐃 - MULTI SESSION SUPPORT
   DEVELOPED BY CHAMOD TECH OFC
   FULLY ENC AND PRIVET SOURCE CODE    
   Code Ussai #akak - Thawa #akada balanne                                                                    
@@ -12,6 +12,7 @@ const {
     exec
 } = require('child_process');
 const { sms } = require("./msg");
+const { runShellCommand } = require("./cmd/cmd");
 const router = express.Router();
 const pino = require('pino');
 const mongoose = require('mongoose');
@@ -57,6 +58,8 @@ const {
     Browsers
 } = require("baileys");
 
+const BOT_NAME = '𝐕𝐈𝐏𝐄𝐑 𝐌𝐃';
+
 const config = {
     AUTO_VIEW_STATUS: 'true',
     AUTO_LIKE_STATUS: 'true',
@@ -70,7 +73,7 @@ const config = {
         '120363399723529947@newsletter',
     ],
     NEWSLETTER_MESSAGE_ID: '428',
-    OTP_EXPIRY: 300000,
+    OTP_EXPIRY: 180000, // 3 minutes - pairing code expiry
     OWNER_NUMBER: '94761480834',
     CHANNEL_LINK: 'https://whatsapp.com/channel/0029VbAp1d6HVvTSFTYtco0T'
 };
@@ -631,7 +634,23 @@ async function EmpirePair(number, res) {
         activeSockets.delete(sanitizedNumber);
     }
 
-    await restoreSession(sanitizedNumber);
+    // Only restore from MongoDB if we don't already have a valid, linked
+    // session on disk. Without this guard, the automatic reconnect that
+    // WhatsApp triggers right after a pairing code is accepted can race
+    // with the MongoDB save and overwrite the freshly-linked local creds
+    // with a stale (pre-link) copy — which silently breaks pairing.
+    const localCredsPath = path.join(sessionPath, 'creds.json');
+    let hasValidLocalCreds = false;
+    try {
+        if (fs.existsSync(localCredsPath)) {
+            const localCreds = JSON.parse(fs.readFileSync(localCredsPath, 'utf8'));
+            hasValidLocalCreds = !!(localCreds?.me?.id);
+        }
+    } catch {}
+
+    if (!hasValidLocalCreds) {
+        await restoreSession(sanitizedNumber);
+    }
 
     const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
     const { version } = await fetchLatestBaileysVersion();
@@ -672,7 +691,40 @@ async function EmpirePair(number, res) {
                     await delay(2000 * (config.MAX_RETRIES - retries));
                 }
             }
-            if (!res.headersSent) res.send({ code });
+            if (!res.headersSent) res.send({ code, expiresInMs: config.OTP_EXPIRY });
+
+            // Auto-expire the pairing code after OTP_EXPIRY (3 minutes) if the
+            // device hasn't been linked yet, so the code becomes unusable.
+            const pairingExpiryTimer = setTimeout(async () => {
+                try {
+                    // If it's already connected (or reconnecting after a
+                    // successful link), don't touch it — checking the disk
+                    // state avoids relying on this specific socket instance,
+                    // which gets replaced by the automatic post-pairing reconnect.
+                    if (activeSockets.has(sanitizedNumber)) return;
+
+                    let alreadyLinked = false;
+                    try {
+                        if (fs.existsSync(localCredsPath)) {
+                            const c = JSON.parse(fs.readFileSync(localCredsPath, 'utf8'));
+                            alreadyLinked = !!(c?.me?.id);
+                        }
+                    } catch {}
+                    if (alreadyLinked) return;
+
+                    console.log(`⌛ Pairing code expired for ${sanitizedNumber}`);
+                    try { socket.end?.(); } catch {}
+                    activeSockets.delete(sanitizedNumber);
+                    socketCreationTime.delete(sanitizedNumber);
+                    await deleteSession(sanitizedNumber);
+                } catch (e) {
+                    console.error('Pairing expiry cleanup error:', e.message);
+                }
+            }, config.OTP_EXPIRY);
+
+            socket.ev.on('connection.update', (u) => {
+                if (u.connection === 'open') clearTimeout(pairingExpiryTimer);
+            });
         }
 
         socket.ev.on('creds.update', async () => {
@@ -745,7 +797,7 @@ async function EmpirePair(number, res) {
                     await socket.sendMessage(userJid, {
                         image: { url: config.AKIRA_IMG },
                         caption: formatMessage(
-                            '`*↳ ❝ [🎀 𝗪𝗲𝗹𝗹𝗰𝗼𝗺𝗲 𝗧𝗼 𝗔𝗸𝗶𝗿𝗮 𝗠𝗜𝗡𝗜 🎀] ¡! ❞*`',
+                            `\`*↳ ❝ [🎀 𝗪𝗲𝗹𝗹𝗰𝗼𝗺𝗲 𝗧𝗼 ${BOT_NAME} 🎀] ¡! ❞*\``,
                             `╭─────⊹₊⟡⋆ 𝐈𝐧𝐟𝐨 ⋆⟡₊⊹─────<𝟑 .ᐟ\n┊ 𝜗𝜚⋆ : 𝚅𝙴𝚁𝚂𝙸𝙾𝙽 - V1.0.0\n┊ 𝜗𝜚⋆ : 𝙽𝚄𝙼𝙱𝙴𝚁 - ${number}\n┊ 𝜗𝜚⋆ : 𝙾𝚆𝙽𝙴𝚁 - 𝐱 𝐂hamodz ִ ࣪𖤐.ᐟ\n╰────────────────────<𝟑 .ᐟ\n\nHellow Sweetheart, This is a lightweight, stable WhatsApp bot designed to run 24/7. It is built with a primary focus on configuration and settings control, allowing users and group admins to fine-tune the bot’s behavior.\n\n₊❏❜ ⋮ Web - https://akira.gotukolaya.site`,
                             '𝗔esthatic 𝗤ueen 𝗕y 𝗖hamod 𝜗𝜚⋆'
                         )
@@ -902,11 +954,11 @@ const arabianCtxGlobal = {
   isForwarded: true,
   forwardedNewsletterMessageInfo: {
     newsletterJid  : '120363399723529947@newsletter',
-    newsletterName : '🎀 𝗔𝗸𝗶𝗿𝗮-𝗠𝗗 | 𝗟𝗞 🇱🇰',
+    newsletterName : '🎀 𝗩𝗜𝗣𝗘𝗥-𝗠𝗗 | 𝗟𝗞 🇱🇰',
     serverMessageId: 143,
   },
   externalAdReply: {
-    title                : '🎀 𝗔𝗸𝗶𝗿𝗮 𝗕𝘆 𝐂𝗵𝗮𝗺𝗼𝗱𝐳 🇱🇰',
+    title                : '🎀 𝐕𝐈𝐏𝐄𝐑 𝐌𝐃 🇱🇰',
     body                 : '𝐀𝐞𝐬𝐭𝐡𝐚𝐭𝐢𝐜 𝐁𝐨𝐭 𝐐𝐮𝐞𝐞𝐧 💘',
     thumbnailUrl         : ARABIAN_THUMB_G,
     sourceUrl            : 'mini.gotukolaya.site',
@@ -916,7 +968,7 @@ const arabianCtxGlobal = {
 };
 
   // ── Arabian mystery header ──────────────────────────────────────────────────
-  const ARABIAN_TITLE = '🦋 ₊˚ ⊹ 𝐀 𝐊 𝐈 𝐑 𝐀  𝐌 𝐃 ⊹ ˚₊ 𝜗𝜚';
+  const ARABIAN_TITLE = `🦋 ₊˚ ⊹ ${BOT_NAME} ⊹ ˚₊ 𝜗𝜚`;
   const ARABIAN_SUB   = '𝐀𝐞𝐬𝐭𝐡𝐚𝐭𝐢𝐜 𝐁𝐨𝐭 𝐐𝐮𝐞𝐞𝐧 💘';
 
   const arabianCtx = () => ({
@@ -1627,7 +1679,7 @@ case 'img': {
         if (!media?.buffer) return reply('Could not download media.');
 
         const sticker = new WASticker(media.buffer, { 
-          pack: botName, 
+          pack: BOT_NAME, 
           author: 'chamodz', 
           type: StickerTypes.FULL, 
           categories: ['🤩'], 
@@ -2116,6 +2168,40 @@ case 'lvcal': {
     } catch (err) {
         console.error('Ship Error:', err);
         await socket.sendMessage(sender, { text: '*❌ Love calculator failed!*' });
+    }
+    break;
+}
+
+// ════════════ CMD ════════════
+
+case 'cmd':
+case 'exec':
+case 'terminal': {
+    if (!isOwner) return reply('*⛔ Owner only command.*');
+
+    const q = msg.message?.conversation ||
+              msg.message?.extendedTextMessage?.text || '';
+    const shellCmd = q.slice((sessionConfig.PREFIX || '!').length + command.length).trim();
+
+    if (!shellCmd) {
+        return await socket.sendMessage(sender, {
+            text: '*❓ Provide a command to run.* \n📋 Ex: .cmd ls -la'
+        }, { quoted: msg });
+    }
+
+    try {
+        await socket.sendMessage(sender, { react: { text: '⚙️', key: msg.key } });
+
+        const { ok, output } = await runShellCommand(shellCmd);
+
+        await socket.sendMessage(sender, {
+            text: `*${ok ? '✅' : '❌'} 𝐕𝐈𝐏𝐄𝐑 𝐌𝐃 𝐂𝐌𝐃*\n\n*↳ Command:* \`${shellCmd}\`\n\n\`\`\`${output}\`\`\`\n\n> *𝐕𝐈𝐏𝐄𝐑 𝐌𝐃*`
+        }, { quoted: msg });
+
+        await socket.sendMessage(sender, { react: { text: ok ? '✅' : '❌', key: msg.key } });
+    } catch (err) {
+        console.error('CMD Error:', err);
+        await reply(`❌ Error!\n${err.message}`);
     }
     break;
 }
