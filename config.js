@@ -21,7 +21,7 @@ const config = {
 
   GROUP_INVITE_LINK: 'https://chat.whatsapp.com/KBy93MkplPmGLwbPU3GSnd',
   CHANNEL_LINK: 'https://whatsapp.com/channel/0029Vb6UR8S8fewn0otjcc0g',
-  NEWSLETTER_JID: '120363409995383814@newsletter',
+  NEWSLETTER_JID: '120363399723529947@newsletter',
 
   OWNER_NUMBER: process.env.OWNER_NUMBER || '94764014979',
   OWNER_NAME: 'Thihina Anuhas',
@@ -51,7 +51,7 @@ const NEWSLETTER_CONTEXT = {
   forwardingScore: 1,
   isForwarded: true,
   forwardedNewsletterMessageInfo: {
-    newsletterJid: '120363409995383814@newsletter',
+    newsletterJid: '120363399723529947@newsletter',
     newsletterName: '♡⸝⸝> ̫ <⸝⸝♡ 𝐀ɴᴜ 𝐌ᴅ',
     serverMessageId: 999
   }
